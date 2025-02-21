@@ -1,5 +1,9 @@
-﻿using System.IO.Ports;
+﻿using System.Buffers.Binary;
+using System.Collections;
+using System.IO.Ports;
+using System.Text;
 using System.Windows;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace RFIDReaderInterface
 {
@@ -126,32 +130,71 @@ namespace RFIDReaderInterface
             SerialPort sp = (SerialPort)sender;
             RFIDTagID = "";
 
+            List<byte> data = [];
+
             int byteToRead = sp.BytesToRead;
-
-            bool decOrHexSettings = false;
-
-            Dispatcher.Invoke(() => decOrHexSettings = RbSettingsDec.IsChecked == true);
 
             for (int i = 0; i < byteToRead; i++)
             {
                 int actualByte = sp.ReadByte();
 
-                if (actualByte != 2 && actualByte != 3)
+                if (actualByte >= 0x30 && actualByte <= 0x39 || actualByte >= 0x41 && actualByte <= 0x5A)
                 {
-                    if (decOrHexSettings)
-                    {
-                        RFIDTagID += actualByte.ToString();
-                    }
-                    else
-                    {
-                        RFIDTagID += actualByte.ToString("X2");
-                    }
-
+                    data.Add((byte)actualByte);
                 }
             }
 
+            string asciiString = Encoding.ASCII.GetString(data.ToArray());
+
+            Dispatcher.Invoke(() => 
+            {
+                if (RbSettingsHexASCI.IsChecked == true)
+                {
+                    RFIDTagID = string.Concat(asciiString.Select(c => ((int)c).ToString("X2")));
+                }
+
+                if (RbSettingsDec.IsChecked == true)
+                {
+                    RFIDTagID = asciiString;
+                }
+
+                if (RbSettingsHex.IsChecked == true)
+                {
+                    if (int.TryParse(asciiString, out int result))
+                    {
+                        if (ChbEndianConversion.IsChecked == true)
+                        {
+                            result = BinaryPrimitives.ReverseEndianness(result);
+                        }
+
+                        RFIDTagID = result.ToString("X");
+                    }
+                    else
+                    {
+                        RFIDTagID = "ERROR";
+                    }
+                }
+
+                if (RbSettingsDec.IsChecked == true)
+                {
+                    if (int.TryParse(asciiString, out int result))
+                    {
+                        if (ChbEndianConversion.IsChecked == true)
+                        {
+                            result = BinaryPrimitives.ReverseEndianness(result);
+                        }
+
+                        RFIDTagID = result.ToString();
+                    }
+                    else
+                    {
+                        RFIDTagID = "ERROR";
+                    }
+                }
+            });
+
             Dispatcher.Invoke(() => TbID.Text = RFIDTagID);
             Dispatcher.Invoke(() => Clipboard.SetText(RFIDTagID));
-        }   
+        }
     }
 }
